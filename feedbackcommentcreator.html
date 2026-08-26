@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jack's Feedback Comment Creator</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --accent-bg: #f1f5f9;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; line-height: 1.5; }
+    .container { max-width: 900px; margin: 0 auto; }
+    
+    h1 { margin-bottom: 8px; font-size: 1.8rem; }
+    p.subtitle { color: var(--muted); margin-bottom: 24px; }
+    
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .card h2 { font-size: 1.25rem; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+    .header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid-selects { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    
+    label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; }
+    input[type="text"], textarea, select { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; background-color: white; }
+    textarea { resize: vertical; height: 60px; }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--primary); border-color: transparent; }
+
+    .btn { background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.9rem; transition: background 0.2s; }
+    .btn:hover { background: var(--primary-hover); }
+    .btn-secondary { background: var(--accent-bg); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+
+    /* Drag & Drop Overlay Zone */
+    .dropzone { border: 2px dashed var(--primary); background: #eff6ff; padding: 15px; border-radius: 8px; text-align: center; color: var(--primary); margin-bottom: 15px; font-weight: 500; display: none; }
+    .dropzone.active { display: block; }
+
+    /* Quick Paste Section */
+    .bulk-panel { background: #f8fafc; border: 1px solid var(--border); padding: 12px; border-radius: 6px; margin-bottom: 16px; display: none; }
+    .bulk-panel textarea { height: 90px; font-family: monospace; font-size: 0.85rem; }
+
+    .criterion-item { border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #fafafa; }
+    .criterion-header { display: flex; gap: 10px; margin-bottom: 8px; }
+
+    .select-card { background: #fafafa; border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+
+    .overall-panel { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); background: #f8fafc; padding: 12px 16px; border-radius: 6px; }
+
+    .overall-breakdown { text-align: right; }
+    .overall-badge { font-size: 1.25rem; font-weight: 700; color: var(--primary); }
+    .overall-detail { font-size: 0.85rem; color: var(--muted); margin-top: 2px; font-family: monospace; }
+
+    .output-box { background: var(--accent-bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; font-family: monospace; white-space: pre-wrap; font-size: 0.95rem; margin-top: 10px; position: relative; }
+    .copy-btn { position: absolute; top: 10px; right: 10px; }
+  </style>
+</head>
+<body>
+
+<div class="container" id="appContainer">
+  <h1>Jack's Feedback Comment Creator</h1>
+  <p class="subtitle">Set up your grading criteria comments once, then select student grades to create a structured feedback comment.</p>
+
+  <!-- DROPZONE FOR FILE DRAG-AND-DROP -->
+  <div id="dropzone" class="dropzone">Drop JSON rubric file here to import instantly!</div>
+
+  <!-- STEP 1: RUBRIC MANAGEMENT & SETUP -->
+  <div class="card">
+    <h2>
+      <span>Step 1: Rubric Setup</span>
+      <div class="header-actions">
+        <!-- Preset Dropdown -->
+        <select id="presetSelect" style="width: auto;" onchange="loadPreset(this.value)">
+          <option value="">-- Saved Rubrics --</option>
+        </select>
+        <button class="btn btn-secondary" onclick="saveCurrentAsPreset()">Save Preset</button>
+        <button class="btn btn-secondary" onclick="toggleBulkImport()">Quick Bulk Paste</button>
+        <button class="btn btn-secondary" onclick="addCriterion()">+ Add Criterion</button>
+        <button class="btn btn-secondary" onclick="exportRubric()">Export JSON</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">Import JSON</button>
+        <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importRubric(event)">
+      </div>
+    </h2>
+
+    <!-- BULK PASTE PANEL -->
+    <div id="bulkPanel" class="bulk-panel">
+      <label>Paste CSV Lines (Format: Code | Name | Comment A | Comment B | Comment C | Comment D | Comment E)</label>
+      <textarea id="bulkInput" placeholder="AP1 | Analysis | Excellent work | Good work | Basic work | Poor work | No work"></textarea>
+      <div style="margin-top: 6px; text-align: right;">
+        <button class="btn" onclick="processBulkImport()">Import Bulk Lines</button>
+      </div>
+    </div>
+
+    <div id="criteriaList"></div>
+  </div>
+
+  <!-- STEP 2: DROP-DOWN GRADE SELECTION -->
+  <div class="card">
+    <h2>
+      Step 2: Select Student Grades
+      <button class="btn btn-secondary" onclick="resetGrades()">Reset Grades</button>
+    </h2>
+    <div id="gradeSelects" class="grid-selects"></div>
+    
+    <!-- OVERALL GRADE CONFIG -->
+    <div class="overall-panel">
+      <div style="flex: 1; margin-right: 16px;">
+        <label for="overrideSelect">Overall Grade Calculation</label>
+        <select id="overrideSelect" onchange="handleOverrideChange(this.value)">
+          <option value="AUTO">Auto-Calculate (Percentage Scale)</option>
+          <option value="A">Force A</option>
+          <option value="B">Force B</option>
+          <option value="C">Force C</option>
+          <option value="D">Force D</option>
+          <option value="E">Force E</option>
+        </select>
+      </div>
+      <div class="overall-breakdown">
+        <label style="text-align: right;">Current Overall</label>
+        <div id="overallDisplay" class="overall-badge">-</div>
+        <div id="overallDetail" class="overall-detail">Select grades above</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: GENERATED OUTPUT -->
+  <div class="card">
+    <h2>
+      Generated Feedback
+      <button class="btn btn-secondary copy-btn" onclick="copyOutput()">Copy Comment</button>
+    </h2>
+    <div id="output" class="output-box">Your generated feedback will appear here...</div>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = "feedback_generator_rubric";
+  const PRESETS_KEY = "feedback_generator_presets";
+
+  const defaultCriteria = [
+    {
+      code: "AP1",
+      name: "Analysis & Proof 1",
+      comments: {
+        A: "Demonstrates an exceptional, nuanced understanding of key analytical concepts.",
+        B: "Shows a clear and effective overall analysis with solid supporting evidence.",
+        C: "Provides basic analysis, though some claims lack comprehensive evidence.",
+        D: "Analysis is superficial or incomplete in key sections.",
+        E: "Fails to present clear analytical reasoning or supporting evidence."
+      }
+    },
+    {
+      code: "AN3",
+      name: "Argument & Structure 3",
+      comments: {
+        A: "Structure is exceptionally clear, logical, and seamlessly guided throughout.",
+        B: "Well-structured overall with a clear logical progression of ideas.",
+        C: "Structure is generally understandable, though transitions are occasionally abrupt.",
+        D: "Lacks consistent structure, making the argument difficult to follow at times.",
+        E: "Disorganized throughout with no clear structural framework."
+      }
+    }
+  ];
+
+  let criteria = loadCriteriaFromStorage();
+  let selectedGrades = {};
+  let manualOverride = "AUTO";
+
+  const gradePoints = { 'A': 100, 'B': 77, 'C': 60, 'D': 45, 'E': 20 };
+
+  // --- PRESETS SYSTEM ---
+  function getPresets() {
+    const stored = localStorage.getItem(PRESETS_KEY);
+    return stored ? JSON.parse(stored) : {};
+  }
+
+  function updatePresetDropdown() {
+    const select = document.getElementById('presetSelect');
+    const presets = getPresets();
+    select.innerHTML = '<option value="">-- Saved Rubrics --</option>';
+    Object.keys(presets).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+  }
+
+  function saveCurrentAsPreset() {
+    const name = prompt("Enter a name for this rubric preset (e.g. Essay 1):");
+    if (!name) return;
+    const presets = getPresets();
+    presets[name] = criteria;
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+    updatePresetDropdown();
+    document.getElementById('presetSelect').value = name;
+    alert(`Rubric "${name}" saved!`);
+  }
+
+  function loadPreset(name) {
+    if (!name) return;
+    const presets = getPresets();
+    if (presets[name]) {
+      criteria = JSON.parse(JSON.stringify(presets[name]));
+      saveCriteriaToStorage();
+      resetGrades();
+      renderCriteria();
+    }
+  }
+
+  // --- BULK PARSER ---
+  function toggleBulkImport() {
+    const panel = document.getElementById('bulkPanel');
+    panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+  }
+
+  function processBulkImport() {
+    const raw = document.getElementById('bulkInput').value.trim();
+    if (!raw) return;
+
+    const lines = raw.split('\n');
+    const importedCriteria = [];
+
+    lines.forEach(line => {
+      const parts = line.split('|').map(p => p.trim());
+      if (parts.length >= 2) {
+        importedCriteria.push({
+          code: parts[0] || "CODE",
+          name: parts[1] || "Criterion Name",
+          comments: {
+            A: parts[2] || "",
+            B: parts[3] || "",
+            C: parts[4] || "",
+            D: parts[5] || "",
+            E: parts[6] || ""
+          }
+        });
+      }
+    });
+
+    if (importedCriteria.length > 0) {
+      criteria = importedCriteria;
+      saveCriteriaToStorage();
+      resetGrades();
+      renderCriteria();
+      toggleBulkImport();
+      document.getElementById('bulkInput').value = '';
+    }
+  }
+
+  // --- STORAGE & RENDER ---
+  function loadCriteriaFromStorage() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try { return JSON.parse(stored); } catch (e) {}
+    }
+    return JSON.parse(JSON.stringify(defaultCriteria));
+  }
+
+  function saveCriteriaToStorage() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(criteria));
+  }
+
+  function getGradeFromPercentage(pct) {
+    if (pct >= 85) return 'A';
+    if (pct >= 70) return 'B';
+    if (pct >= 50) return 'C';
+    if (pct >= 40) return 'D';
+    return 'E';
+  }
+
+  function renderCriteria() {
+    const list = document.getElementById('criteriaList');
+    list.innerHTML = '';
+
+    criteria.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.className = 'criterion-item';
+      div.innerHTML = `
+        <div class="criterion-header">
+          <input type="text" style="width: 100px;" value="${item.code}" placeholder="Code" onkeyup="updateCriterion(${index}, 'code', this.value)">
+          <input type="text" style="flex: 1;" value="${item.name}" placeholder="Criterion Name" onkeyup="updateCriterion(${index}, 'name', this.value)">
+          <button class="btn btn-danger" onclick="removeCriterion(${index})">Remove</button>
+        </div>
+        <div class="grid-2">
+          ${['A', 'B', 'C', 'D', 'E'].map(grade => `
+            <div>
+              <label>Grade ${grade} Comment</label>
+              <textarea onkeyup="updateComment(${index}, '${grade}', this.value)">${item.comments[grade] || ''}</textarea>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      list.appendChild(div);
+    });
+
+    renderGradeSelectors();
+  }
+
+  function renderGradeSelectors() {
+    const container = document.getElementById('gradeSelects');
+    container.innerHTML = '';
+
+    criteria.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'select-card';
+      const currentGrade = selectedGrades[item.code] || '';
+
+      div.innerHTML = `
+        <label>${item.code}: ${item.name}</label>
+        <select onchange="selectGrade('${item.code}', this.value)">
+          <option value="">-- Select Grade --</option>
+          <option value="A" ${currentGrade === 'A' ? 'selected' : ''}>A (Strength)</option>
+          <option value="B" ${currentGrade === 'B' ? 'selected' : ''}>B (Strength)</option>
+          <option value="C" ${currentGrade === 'C' ? 'selected' : ''}>C (Improvement)</option>
+          <option value="D" ${currentGrade === 'D' ? 'selected' : ''}>D (Improvement)</option>
+          <option value="E" ${currentGrade === 'E' ? 'selected' : ''}>E (Improvement)</option>
+        </select>
+      `;
+      container.appendChild(div);
+    });
+
+    generateFeedback();
+  }
+
+  function selectGrade(code, grade) {
+    if (grade) { selectedGrades[code] = grade; } 
+    else { delete selectedGrades[code]; }
+    generateFeedback();
+  }
+
+  function handleOverrideChange(val) {
+    manualOverride = val;
+    generateFeedback();
+  }
+
+  function resetGrades() {
+    selectedGrades = {};
+    manualOverride = "AUTO";
+    document.getElementById('overrideSelect').value = "AUTO";
+    renderGradeSelectors();
+  }
+
+  function calculateOverallGrade() {
+    const assignedGrades = Object.values(selectedGrades);
+    if (assignedGrades.length === 0) {
+      return { letter: null, percentage: 0, totalSelected: 0 };
+    }
+
+    let totalPoints = 0;
+    assignedGrades.forEach(g => { totalPoints += gradePoints[g]; });
+
+    const percentage = totalPoints / assignedGrades.length;
+    const calculatedLetter = getGradeFromPercentage(percentage);
+    const finalLetter = manualOverride !== "AUTO" ? manualOverride : calculatedLetter;
+
+    return { letter: finalLetter, percentage: percentage, totalSelected: assignedGrades.length };
+  }
+
+  function addCriterion() {
+    const newCode = `CR${criteria.length + 1}`;
+    criteria.push({
+      code: newCode,
+      name: `Criterion ${criteria.length + 1}`,
+      comments: { A: "", B: "", C: "", D: "", E: "" }
+    });
+    saveCriteriaToStorage();
+    renderCriteria();
+  }
+
+  function removeCriterion(index) {
+    delete selectedGrades[criteria[index].code];
+    criteria.splice(index, 1);
+    saveCriteriaToStorage();
+    renderCriteria();
+  }
+
+  function updateCriterion(index, field, value) {
+    const oldCode = criteria[index].code;
+    const newCode = value.trim();
+    if (field === 'code' && oldCode !== newCode && selectedGrades[oldCode]) {
+      selectedGrades[newCode] = selectedGrades[oldCode];
+      delete selectedGrades[oldCode];
+    }
+    criteria[index][field] = value.trim();
+    saveCriteriaToStorage();
+    renderGradeSelectors();
+  }
+
+  function updateComment(index, grade, value) {
+    criteria[index].comments[grade] = value;
+    saveCriteriaToStorage();
+    generateFeedback();
+  }
+
+  function exportRubric() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(criteria, null, 2));
+    const a = document.createElement('a');
+    a.href = dataStr;
+    a.download = "grading_rubric.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function parseJSONRubric(text) {
+    try {
+      const importedData = JSON.parse(text);
+      if (Array.isArray(importedData)) {
+        criteria = importedData;
+        saveCriteriaToStorage();
+        resetGrades();
+        renderCriteria();
+        alert("Rubric loaded successfully!");
+      }
+    } catch (err) {
+      alert("Invalid JSON format.");
+    }
+  }
+
+  function importRubric(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => parseJSONRubric(e.target.result);
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  // --- DRAG & DROP HANDLING ---
+  const dropzone = document.getElementById('dropzone');
+  window.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('active'); });
+  window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropzone.classList.remove('active'); });
+  window.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('active');
+    if (e.dataTransfer.files.length) {
+      const reader = new FileReader();
+      reader.onload = evt => parseJSONRubric(evt.target.result);
+      reader.readAsText(e.dataTransfer.files[0]);
+    }
+  });
+
+  function generateFeedback() {
+    const outputEl = document.getElementById('output');
+    const displayEl = document.getElementById('overallDisplay');
+    const detailEl = document.getElementById('overallDetail');
+    const strengths = [];
+    const improvements = [];
+
+    criteria.forEach(criterion => {
+      const grade = selectedGrades[criterion.code];
+      if (grade && criterion.comments[grade]) {
+        const commentText = criterion.comments[grade].trim();
+        if (commentText) {
+          if (['A', 'B'].includes(grade)) { strengths.push(commentText); } 
+          else { improvements.push(commentText); }
+        }
+      }
+    });
+
+    const stats = calculateOverallGrade();
+    if (stats.letter) {
+      displayEl.textContent = stats.letter;
+      const pctStr = stats.percentage.toFixed(1);
+      detailEl.textContent = manualOverride !== "AUTO" ? `Forced ${stats.letter} (${pctStr}%)` : `${pctStr}% Overall`;
+    } else {
+      displayEl.textContent = '-';
+      detailEl.textContent = 'Select grades above';
+    }
+
+    outputEl.textContent = `What went well:
+${strengths.length > 0 ? strengths.map(s => `- ${s}`).join('\n') : '-'}
+
+What could be improved:
+${improvements.length > 0 ? improvements.map(i => `- ${i}`).join('\n') : '-'}
+
+Overall: ${stats.letter ? stats.letter : '-'}`;
+  }
+
+  function copyOutput() {
+    navigator.clipboard.writeText(document.getElementById('output').textContent).then(() => {
+      alert('Feedback copied to clipboard!');
+    });
+  }
+
+  updatePresetDropdown();
+  renderCriteria();
+</script>
+
+</body>
+</html>
