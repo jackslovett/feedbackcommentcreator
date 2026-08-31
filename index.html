@@ -73,6 +73,9 @@
 
     .output-box { background: var(--accent-bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; font-family: monospace; white-space: pre-wrap; font-size: 0.95rem; margin-top: 10px; position: relative; }
     .copy-btn { position: absolute; top: 10px; right: 10px; }
+    
+    .b-toggle-box { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .b-toggle-box select { padding: 2px 6px; font-size: 0.8rem; width: auto; }
   </style>
 </head>
 <body>
@@ -83,6 +86,7 @@
 
   <div id="dropzone" class="dropzone">Drop JSON rubric file here to import instantly!</div>
 
+  <!-- STEP 1: RUBRIC MANAGEMENT & SETUP -->
   <div class="card">
     <h2>
       <span>Step 1: Rubric Setup</span>
@@ -99,14 +103,16 @@
       </div>
     </h2>
 
+    <!-- AI API KEY BAR -->
     <div class="api-panel">
       <label for="apiKeyInput">Gemini API Key:</label>
       <input type="password" id="apiKeyInput" placeholder="Paste your Google Gemini API Key here to enable AI Auto-Fill" onchange="saveApiKey(this.value)">
     </div>
 
+    <!-- BULK PASTE PANEL -->
     <div id="bulkPanel" class="bulk-panel">
-      <label>Paste CSV Lines (Format: Code | Name | Comment A | Comment B | Comment C | Comment D | Comment E)</label>
-      <textarea id="bulkInput" placeholder="AP1 | Analysis | Excellent work | Good work | Basic work | Poor work | No work"></textarea>
+      <label>Paste CSV Lines (Format: Code | Name | Comment A | Comment B Strength | Comment B Improvement | Comment C | Comment D | Comment E)</label>
+      <textarea id="bulkInput" placeholder="AP1 | Analysis | Excellent analysis | Good analysis shown | Needs slightly deeper analysis for top band | Basic work | Poor work | No work"></textarea>
       <div style="margin-top: 6px; text-align: right;">
         <button class="btn" onclick="processBulkImport()">Import Bulk Lines</button>
       </div>
@@ -115,6 +121,7 @@
     <div id="criteriaList"></div>
   </div>
 
+  <!-- STEP 2: DROP-DOWN GRADE SELECTION -->
   <div class="card">
     <h2>
       Step 2: Select Student Grades
@@ -142,6 +149,7 @@
     </div>
   </div>
 
+  <!-- STEP 3: GENERATED OUTPUT -->
   <div class="card">
     <h2>
       Generated Feedback
@@ -163,11 +171,13 @@
       core: "analysing key arguments and supporting claims with evidence",
       comments: {
         A: "Demonstrates high proficiency in analysing key arguments and supporting claims with relevant evidence.",
-        B: "Effectively analyses key arguments and supports claims with evidence.",
+        B_strength: "Effectively analyses key arguments and supports most claims with suitable evidence.",
+        B_improvement: "To reach the top band, aim to deepen the analysis and ensure all claims are thoroughly backed by evidence.",
         C: "Provides a basic analysis of key arguments, though some claims require clearer evidence.",
         D: "Shows limited capability in analysing arguments, with inconsistent use of supporting evidence.",
         E: "Fails to demonstrate adequate skills in analysing key arguments or providing evidence."
-      }
+      },
+      bMode: "strength"
     }
   ];
 
@@ -177,7 +187,6 @@
 
   const gradePoints = { 'A': 100, 'B': 77, 'C': 60, 'D': 45, 'E': 20 };
 
-  // --- API KEY MANAGEMENT ---
   function loadApiKey() {
     const savedKey = localStorage.getItem(API_KEY_STORAGE) || "";
     document.getElementById('apiKeyInput').value = savedKey;
@@ -187,7 +196,6 @@
     localStorage.setItem(API_KEY_STORAGE, val.trim());
   }
 
-  // --- AI GENERATION CALL (AUSTRALIAN ENGLISH + TEACHER TONE) ---
   async function generateBandsFromCore(index) {
     const coreText = (criteria[index].core || '').trim();
     const apiKey = document.getElementById('apiKeyInput').value.trim();
@@ -209,22 +217,23 @@
     }
 
     const prompt = `You are a professional teacher writing constructive, balanced academic feedback.
-Write 5 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}".
+Write 6 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}".
 
 STRICT GUIDELINES:
 1. Use Australian English spelling exclusively (e.g., organised, analysed, emphasised, generalised, standardise, colour).
-2. Maintain a professional, grounded teacher-like tone. Avoid dramatic or excessive adjectives (such as "astounding", "masterful", "incredible", "terrible", "disastrous").
-3. Keep punctuation simple and standard. Avoid exclamation marks or complex syntax.
+2. Maintain a professional, grounded teacher-like tone. Avoid dramatic or excessive adjectives.
+3. Keep punctuation simple and standard. Avoid exclamation marks.
 
-Write one clear sentence for each grade band:
+Write one clear sentence for each of these categories:
 - A (High achievement/Proficient execution)
-- B (Solid work/Good competence)
+- B_strength (Solid work/Good competence - framed as a positive achievement)
+- B_improvement (Good attempt, but actionable advice on what is needed to reach an A grade)
 - C (Satisfactory/Basic execution with minor gaps)
 - D (Partial achievement/Needs substantial development)
 - E (Limited achievement/Inadequate execution)
 
 Return ONLY a valid JSON object matching this exact schema:
-{"A": "sentence A", "B": "sentence B", "C": "sentence C", "D": "sentence D", "E": "sentence E"}`;
+{"A": "...", "B_strength": "...", "B_improvement": "...", "C": "...", "D": "...", "E": "..."}`;
 
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
@@ -244,11 +253,11 @@ Return ONLY a valid JSON object matching this exact schema:
       const data = await response.json();
       const bands = JSON.parse(data.candidates[0].content.parts[0].text);
 
-      ['A', 'B', 'C', 'D', 'E'].forEach(grade => {
-        if (bands[grade]) {
-          criteria[index].comments[grade] = bands[grade];
-          const textarea = document.getElementById(`comment_${index}_${grade}`);
-          if (textarea) textarea.value = bands[grade];
+      ['A', 'B_strength', 'B_improvement', 'C', 'D', 'E'].forEach(key => {
+        if (bands[key]) {
+          criteria[index].comments[key] = bands[key];
+          const textarea = document.getElementById(`comment_${index}_${key}`);
+          if (textarea) textarea.value = bands[key];
         }
       });
 
@@ -270,6 +279,12 @@ Return ONLY a valid JSON object matching this exact schema:
     list.innerHTML = '';
 
     criteria.forEach((item, index) => {
+      if (!item.comments.B_strength && item.comments.B) {
+        item.comments.B_strength = item.comments.B;
+        item.comments.B_improvement = "";
+      }
+      if (!item.bMode) item.bMode = "strength";
+
       const div = document.createElement('div');
       div.className = 'criterion-item';
       div.innerHTML = `
@@ -285,18 +300,49 @@ Return ONLY a valid JSON object matching this exact schema:
         </div>
 
         <div class="grid-2">
-          ${['A', 'B', 'C', 'D', 'E'].map(grade => `
-            <div>
-              <label>Grade ${grade} Comment</label>
-              <textarea id="comment_${index}_${grade}" onkeyup="updateComment(${index}, '${grade}', this.value)">${item.comments[grade] || ''}</textarea>
+          <div>
+            <label>Grade A Comment</label>
+            <textarea id="comment_${index}_A" onkeyup="updateComment(${index}, 'A', this.value)">${item.comments.A || ''}</textarea>
+          </div>
+
+          <div>
+            <div class="b-toggle-box">
+              <label style="margin-bottom:0;">Grade B Comment</label>
+              <select onchange="updateBMode(${index}, this.value)">
+                <option value="strength" ${item.bMode === 'strength' ? 'selected' : ''}>Active: Strength</option>
+                <option value="improvement" ${item.bMode === 'improvement' ? 'selected' : ''}>Active: Improvement</option>
+              </select>
             </div>
-          `).join('')}
+            <textarea id="comment_${index}_B_strength" style="margin-bottom:6px;" placeholder="B Strength sentence..." onkeyup="updateComment(${index}, 'B_strength', this.value)">${item.comments.B_strength || ''}</textarea>
+            <textarea id="comment_${index}_B_improvement" placeholder="B Improvement/Advice sentence..." onkeyup="updateComment(${index}, 'B_improvement', this.value)">${item.comments.B_improvement || ''}</textarea>
+          </div>
+
+          <div>
+            <label>Grade C Comment</label>
+            <textarea id="comment_${index}_C" onkeyup="updateComment(${index}, 'C', this.value)">${item.comments.C || ''}</textarea>
+          </div>
+
+          <div>
+            <label>Grade D Comment</label>
+            <textarea id="comment_${index}_D" onkeyup="updateComment(${index}, 'D', this.value)">${item.comments.D || ''}</textarea>
+          </div>
+
+          <div>
+            <label>Grade E Comment</label>
+            <textarea id="comment_${index}_E" onkeyup="updateComment(${index}, 'E', this.value)">${item.comments.E || ''}</textarea>
+          </div>
         </div>
       `;
       list.appendChild(div);
     });
 
     renderGradeSelectors();
+  }
+
+  function updateBMode(index, mode) {
+    criteria[index].bMode = mode;
+    saveCriteriaToStorage();
+    generateFeedback();
   }
 
   function getPresets() {
@@ -357,12 +403,14 @@ Return ONLY a valid JSON object matching this exact schema:
           code: parts[0] || "CODE",
           name: parts[1] || "Criterion Name",
           core: "",
+          bMode: "strength",
           comments: {
             A: parts[2] || "",
-            B: parts[3] || "",
-            C: parts[4] || "",
-            D: parts[5] || "",
-            E: parts[6] || ""
+            B_strength: parts[3] || "",
+            B_improvement: parts[4] || "",
+            C: parts[5] || "",
+            D: parts[6] || "",
+            E: parts[7] || ""
           }
         });
       }
@@ -412,7 +460,7 @@ Return ONLY a valid JSON object matching this exact schema:
         <select onchange="selectGrade('${item.code}', this.value)">
           <option value="">-- Select Grade --</option>
           <option value="A" ${currentGrade === 'A' ? 'selected' : ''}>A (Strength)</option>
-          <option value="B" ${currentGrade === 'B' ? 'selected' : ''}>B (Strength)</option>
+          <option value="B" ${currentGrade === 'B' ? 'selected' : ''}>B (${item.bMode === 'improvement' ? 'Improvement' : 'Strength'})</option>
           <option value="C" ${currentGrade === 'C' ? 'selected' : ''}>C (Improvement)</option>
           <option value="D" ${currentGrade === 'D' ? 'selected' : ''}>D (Improvement)</option>
           <option value="E" ${currentGrade === 'E' ? 'selected' : ''}>E (Improvement)</option>
@@ -464,7 +512,8 @@ Return ONLY a valid JSON object matching this exact schema:
       code: newCode,
       name: `Criterion ${criteria.length + 1}`,
       core: "",
-      comments: { A: "", B: "", C: "", D: "", E: "" }
+      bMode: "strength",
+      comments: { A: "", B_strength: "", B_improvement: "", C: "", D: "", E: "" }
     });
     saveCriteriaToStorage();
     renderCriteria();
@@ -489,8 +538,8 @@ Return ONLY a valid JSON object matching this exact schema:
     if (field === 'code' || field === 'name') renderGradeSelectors();
   }
 
-  function updateComment(index, grade, value) {
-    criteria[index].comments[grade] = value;
+  function updateComment(index, key, value) {
+    criteria[index].comments[key] = value;
     saveCriteriaToStorage();
     generateFeedback();
   }
@@ -548,34 +597,27 @@ Return ONLY a valid JSON object matching this exact schema:
     const displayEl = document.getElementById('overallDisplay');
     const detailEl = document.getElementById('overallDetail');
     
-    const assignedEntries = [];
-
-    criteria.forEach(criterion => {
-      const grade = selectedGrades[criterion.code];
-      if (grade && criterion.comments[grade]) {
-        const commentText = criterion.comments[grade].trim();
-        if (commentText) {
-          assignedEntries.push({ grade, text: commentText });
-        }
-      }
-    });
-
-    const hasLowerGrades = assignedEntries.some(entry => ['C', 'D', 'E'].includes(entry.grade));
-
     const strengths = [];
     const improvements = [];
 
-    assignedEntries.forEach(entry => {
-      if (entry.grade === 'A') {
-        strengths.push(entry.text);
-      } else if (entry.grade === 'B') {
-        if (hasLowerGrades) {
-          strengths.push(entry.text);
-        } else {
-          improvements.push(entry.text);
+    criteria.forEach(criterion => {
+      const grade = selectedGrades[criterion.code];
+      if (!grade) return;
+
+      if (grade === 'A') {
+        if (criterion.comments.A) strengths.push(criterion.comments.A.trim());
+      } else if (grade === 'B') {
+        const isImprovement = criterion.bMode === 'improvement';
+        const comment = isImprovement ? criterion.comments.B_improvement : criterion.comments.B_strength;
+        if (comment) {
+          if (isImprovement) {
+            improvements.push(comment.trim());
+          } else {
+            strengths.push(comment.trim());
+          }
         }
       } else {
-        improvements.push(entry.text);
+        if (criterion.comments[grade]) improvements.push(criterion.comments[grade].trim());
       }
     });
 
