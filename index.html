@@ -472,21 +472,43 @@
     }
   });
 
-  function generateFeedback() {
+function generateFeedback() {
     const outputEl = document.getElementById('output');
     const displayEl = document.getElementById('overallDisplay');
     const detailEl = document.getElementById('overallDetail');
-    const strengths = [];
-    const improvements = [];
+    
+    const assignedEntries = [];
 
+    // Collect all selected criteria comments
     criteria.forEach(criterion => {
       const grade = selectedGrades[criterion.code];
       if (grade && criterion.comments[grade]) {
         const commentText = criterion.comments[grade].trim();
         if (commentText) {
-          if (['A', 'B'].includes(grade)) { strengths.push(commentText); } 
-          else { improvements.push(commentText); }
+          assignedEntries.push({ grade, text: commentText });
         }
+      }
+    });
+
+    // Check if there are any C, D, or E grades present
+    const hasLowerGrades = assignedEntries.some(entry => ['C', 'D', 'E'].includes(entry.grade));
+
+    const strengths = [];
+    const improvements = [];
+
+    assignedEntries.forEach(entry => {
+      if (entry.grade === 'A') {
+        strengths.push(entry.text);
+      } else if (entry.grade === 'B') {
+        // If lower grades exist, B is a strength. If it's only As & Bs, B becomes an area for improvement.
+        if (hasLowerGrades) {
+          strengths.push(entry.text);
+        } else {
+          improvements.push(entry.text);
+        }
+      } else {
+        // C, D, and E always go to improvements
+        improvements.push(entry.text);
       }
     });
 
