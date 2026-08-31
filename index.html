@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jack's Feedback Comment Creator</title>
+  <title>Automated Feedback Comment Generator</title>
   <style>
     :root {
       --bg: #f8fafc;
@@ -43,16 +43,17 @@
     .btn-danger { background: #ef4444; color: white; }
     .btn-danger:hover { background: #dc2626; }
 
-    /* Drag & Drop Overlay Zone */
     .dropzone { border: 2px dashed var(--primary); background: #eff6ff; padding: 15px; border-radius: 8px; text-align: center; color: var(--primary); margin-bottom: 15px; font-weight: 500; display: none; }
     .dropzone.active { display: block; }
 
-    /* Quick Paste Section */
     .bulk-panel { background: #f8fafc; border: 1px solid var(--border); padding: 12px; border-radius: 6px; margin-bottom: 16px; display: none; }
     .bulk-panel textarea { height: 90px; font-family: monospace; font-size: 0.85rem; }
 
     .criterion-item { border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #fafafa; }
     .criterion-header { display: flex; gap: 10px; margin-bottom: 8px; }
+
+    .template-generator-bar { display: flex; gap: 8px; margin-bottom: 12px; background: #ffffff; padding: 8px; border: 1px border-radius: 6px; border: 1px solid var(--border); }
+    .template-generator-bar input { flex: 1; }
 
     .select-card { background: #fafafa; border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
 
@@ -69,10 +70,9 @@
 <body>
 
 <div class="container" id="appContainer">
-  <h1>Jack's Feedback Comment Creator</h1>
-  <p class="subtitle">Set up your grading criteria comments once, then select student grades to create a structured feedback comment.</p>
+  <h1>Feedback Comment Generator</h1>
+  <p class="subtitle">Set up your grading criteria comments once, then select student grades to generate structured feedback.</p>
 
-  <!-- DROPZONE FOR FILE DRAG-AND-DROP -->
   <div id="dropzone" class="dropzone">Drop JSON rubric file here to import instantly!</div>
 
   <!-- STEP 1: RUBRIC MANAGEMENT & SETUP -->
@@ -80,7 +80,6 @@
     <h2>
       <span>Step 1: Rubric Setup</span>
       <div class="header-actions">
-        <!-- Preset Dropdown -->
         <select id="presetSelect" style="width: auto;" onchange="loadPreset(this.value)">
           <option value="">-- Saved Rubrics --</option>
         </select>
@@ -93,7 +92,6 @@
       </div>
     </h2>
 
-    <!-- BULK PASTE PANEL -->
     <div id="bulkPanel" class="bulk-panel">
       <label>Paste CSV Lines (Format: Code | Name | Comment A | Comment B | Comment C | Comment D | Comment E)</label>
       <textarea id="bulkInput" placeholder="AP1 | Analysis | Excellent work | Good work | Basic work | Poor work | No work"></textarea>
@@ -113,7 +111,6 @@
     </h2>
     <div id="gradeSelects" class="grid-selects"></div>
     
-    <!-- OVERALL GRADE CONFIG -->
     <div class="overall-panel">
       <div style="flex: 1; margin-right: 16px;">
         <label for="overrideSelect">Overall Grade Calculation</label>
@@ -148,27 +145,26 @@
   const STORAGE_KEY = "feedback_generator_rubric";
   const PRESETS_KEY = "feedback_generator_presets";
 
+  // Modifier templates for generating grade bands from one core string
+  const bandTemplates = {
+    A: (core) => `Demonstrates an exceptional, highly sophisticated capability in ${core}.`,
+    B: (core) => `Shows clear, effective proficiency in ${core}.`,
+    C: (core) => `Provides basic execution of ${core}, though some elements lack depth or precision.`,
+    D: (core) => `Shows limited evidence of ${core}, requiring substantial improvement.`,
+    E: (core) => `Fails to demonstrate adequate ability in ${core}.`
+  };
+
   const defaultCriteria = [
     {
       code: "AP1",
-      name: "Analysis & Proof 1",
+      name: "Analysis & Proof",
+      core: "analyzing key arguments and supporting claims with evidence",
       comments: {
-        A: "Demonstrates an exceptional, nuanced understanding of key analytical concepts.",
-        B: "Shows a clear and effective overall analysis with solid supporting evidence.",
-        C: "Provides basic analysis, though some claims lack comprehensive evidence.",
-        D: "Analysis is superficial or incomplete in key sections.",
-        E: "Fails to present clear analytical reasoning or supporting evidence."
-      }
-    },
-    {
-      code: "AN3",
-      name: "Argument & Structure 3",
-      comments: {
-        A: "Structure is exceptionally clear, logical, and seamlessly guided throughout.",
-        B: "Well-structured overall with a clear logical progression of ideas.",
-        C: "Structure is generally understandable, though transitions are occasionally abrupt.",
-        D: "Lacks consistent structure, making the argument difficult to follow at times.",
-        E: "Disorganized throughout with no clear structural framework."
+        A: "Demonstrates an exceptional, highly sophisticated capability in analyzing key arguments and supporting claims with evidence.",
+        B: "Shows clear, effective proficiency in analyzing key arguments and supporting claims with evidence.",
+        C: "Provides basic execution of analyzing key arguments and supporting claims with evidence, though some elements lack depth or precision.",
+        D: "Shows limited evidence of analyzing key arguments and supporting claims with evidence, requiring substantial improvement.",
+        E: "Fails to demonstrate adequate ability in analyzing key arguments and supporting claims with evidence."
       }
     }
   ];
@@ -179,7 +175,60 @@
 
   const gradePoints = { 'A': 100, 'B': 77, 'C': 60, 'D': 45, 'E': 20 };
 
-  // --- PRESETS SYSTEM ---
+  function renderCriteria() {
+    const list = document.getElementById('criteriaList');
+    list.innerHTML = '';
+
+    criteria.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.className = 'criterion-item';
+      div.innerHTML = `
+        <div class="criterion-header">
+          <input type="text" style="width: 100px;" value="${item.code || ''}" placeholder="Code" onkeyup="updateCriterion(${index}, 'code', this.value)">
+          <input type="text" style="flex: 1;" value="${item.name || ''}" placeholder="Criterion Name" onkeyup="updateCriterion(${index}, 'name', this.value)">
+          <button class="btn btn-danger" onclick="removeCriterion(${index})">Remove</button>
+        </div>
+        
+        <!-- TEMPLATE GENERATOR BAR -->
+        <div class="template-generator-bar">
+          <input type="text" value="${item.core || ''}" placeholder="Core Topic/Skill (e.g. structuring logical paragraphs)" onkeyup="updateCriterion(${index}, 'core', this.value)">
+          <button class="btn btn-secondary" onclick="generateBandsFromCore(${index})">Auto-Generate Bands</button>
+        </div>
+
+        <div class="grid-2">
+          ${['A', 'B', 'C', 'D', 'E'].map(grade => `
+            <div>
+              <label>Grade ${grade} Comment</label>
+              <textarea id="comment_${index}_${grade}" onkeyup="updateComment(${index}, '${grade}', this.value)">${item.comments[grade] || ''}</textarea>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      list.appendChild(div);
+    });
+
+    renderGradeSelectors();
+  }
+
+  function generateBandsFromCore(index) {
+    const coreText = (criteria[index].core || '').trim();
+    if (!coreText) {
+      alert("Please enter a Core Topic/Skill first (e.g., 'supporting claims with academic evidence').");
+      return;
+    }
+
+    ['A', 'B', 'C', 'D', 'E'].forEach(grade => {
+      const generatedText = bandTemplates[grade](coreText);
+      criteria[index].comments[grade] = generatedText;
+      
+      const textarea = document.getElementById(`comment_${index}_${grade}`);
+      if (textarea) textarea.value = generatedText;
+    });
+
+    saveCriteriaToStorage();
+    generateFeedback();
+  }
+
   function getPresets() {
     const stored = localStorage.getItem(PRESETS_KEY);
     return stored ? JSON.parse(stored) : {};
@@ -219,7 +268,6 @@
     }
   }
 
-  // --- BULK PARSER ---
   function toggleBulkImport() {
     const panel = document.getElementById('bulkPanel');
     panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
@@ -238,6 +286,7 @@
         importedCriteria.push({
           code: parts[0] || "CODE",
           name: parts[1] || "Criterion Name",
+          core: "",
           comments: {
             A: parts[2] || "",
             B: parts[3] || "",
@@ -259,7 +308,6 @@
     }
   }
 
-  // --- STORAGE & RENDER ---
   function loadCriteriaFromStorage() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -278,34 +326,6 @@
     if (pct >= 50) return 'C';
     if (pct >= 40) return 'D';
     return 'E';
-  }
-
-  function renderCriteria() {
-    const list = document.getElementById('criteriaList');
-    list.innerHTML = '';
-
-    criteria.forEach((item, index) => {
-      const div = document.createElement('div');
-      div.className = 'criterion-item';
-      div.innerHTML = `
-        <div class="criterion-header">
-          <input type="text" style="width: 100px;" value="${item.code}" placeholder="Code" onkeyup="updateCriterion(${index}, 'code', this.value)">
-          <input type="text" style="flex: 1;" value="${item.name}" placeholder="Criterion Name" onkeyup="updateCriterion(${index}, 'name', this.value)">
-          <button class="btn btn-danger" onclick="removeCriterion(${index})">Remove</button>
-        </div>
-        <div class="grid-2">
-          ${['A', 'B', 'C', 'D', 'E'].map(grade => `
-            <div>
-              <label>Grade ${grade} Comment</label>
-              <textarea onkeyup="updateComment(${index}, '${grade}', this.value)">${item.comments[grade] || ''}</textarea>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      list.appendChild(div);
-    });
-
-    renderGradeSelectors();
   }
 
   function renderGradeSelectors() {
@@ -373,6 +393,7 @@
     criteria.push({
       code: newCode,
       name: `Criterion ${criteria.length + 1}`,
+      core: "",
       comments: { A: "", B: "", C: "", D: "", E: "" }
     });
     saveCriteriaToStorage();
@@ -393,9 +414,9 @@
       selectedGrades[newCode] = selectedGrades[oldCode];
       delete selectedGrades[oldCode];
     }
-    criteria[index][field] = value.trim();
+    criteria[index][field] = value;
     saveCriteriaToStorage();
-    renderGradeSelectors();
+    if (field === 'code' || field === 'name') renderGradeSelectors();
   }
 
   function updateComment(index, grade, value) {
@@ -438,7 +459,6 @@
     event.target.value = '';
   }
 
-  // --- DRAG & DROP HANDLING ---
   const dropzone = document.getElementById('dropzone');
   window.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('active'); });
   window.addEventListener('dragleave', e => { if (e.clientX === 0 && e.clientY === 0) dropzone.classList.remove('active'); });
