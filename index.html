@@ -16,6 +16,7 @@
       --accent-bg: #f1f5f9;
       --ai-purple: #7c3aed;
       --ai-purple-hover: #6d28d9;
+      --success: #16a34a;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -47,6 +48,7 @@
     .btn-ai { background: var(--ai-purple); color: white; }
     .btn-ai:hover { background: var(--ai-purple-hover); }
     .btn-ai:disabled { background: #c4b5fd; cursor: not-allowed; }
+    .btn-success { background: var(--success); color: white; }
 
     .dropzone { border: 2px dashed var(--primary); background: #eff6ff; padding: 15px; border-radius: 8px; text-align: center; color: var(--primary); margin-bottom: 15px; font-weight: 500; display: none; }
     .dropzone.active { display: block; }
@@ -76,9 +78,21 @@
     .overall-badge { font-size: 1.25rem; font-weight: 700; color: var(--primary); }
     .overall-detail { font-size: 0.85rem; color: var(--muted); margin-top: 2px; font-family: monospace; }
 
-    .output-box { background: var(--accent-bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; font-family: monospace; white-space: pre-wrap; font-size: 0.95rem; margin-top: 10px; position: relative; }
-    .copy-btn { position: absolute; top: 10px; right: 10px; }
-    
+    /* EDITABLE OUTPUT CONTAINER & OPTIONS BAR */
+    .customization-bar { display: flex; gap: 16px; margin-bottom: 12px; background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); flex-wrap: wrap; }
+    .customization-bar > div { flex: 1; min-width: 180px; }
+
+    .output-container { position: relative; margin-top: 10px; }
+    .output-textarea { width: 100%; min-height: 140px; padding: 14px; font-family: monospace; font-size: 0.95rem; line-height: 1.4; border: 1px solid var(--border); border-radius: 6px; background-color: var(--accent-bg); }
+    .output-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .copy-btn-overlay { position: absolute; top: 10px; right: 10px; font-size: 0.8rem; padding: 4px 10px; z-index: 5; }
+
+    /* TRACKER STYLES */
+    .tracker-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 10px; text-align: center; }
+    .tracker-stat { background: #fafafa; border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+    .tracker-stat-count { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
+    .tracker-stat-label { font-size: 0.8rem; color: var(--muted); }
+
     .b-toggle-box { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .b-toggle-box select { padding: 2px 6px; font-size: 0.8rem; width: auto; }
   </style>
@@ -152,7 +166,7 @@
   <div class="card">
     <h2>
       Step 2: Select Student Grades
-      <button class="btn btn-secondary" onclick="resetGrades()">Reset Grades</button>
+      <button class="btn btn-secondary" onclick="resetGrades()">Reset Selection</button>
     </h2>
     <div id="gradeSelects" class="grid-selects"></div>
     
@@ -176,20 +190,84 @@
     </div>
   </div>
 
-  <!-- STEP 3: GENERATED OUTPUT -->
+  <!-- STEP 3: GENERATED OUTPUT & CUSTOMIZATION -->
   <div class="card">
     <h2>
       Generated Feedback
-      <button class="btn btn-secondary copy-btn" onclick="copyOutput()">Copy Comment</button>
+      <button class="btn btn-secondary" id="headerCopyBtn" onclick="copyOutput(this)">Copy Comment</button>
     </h2>
-    <div id="output" class="output-box">Your generated feedback will appear here...</div>
+
+    <!-- TONE AND FORMAT CUSTOMIZATION TOGGLES -->
+    <div class="customization-bar">
+      <div>
+        <label for="toneSelect">Feedback Tone</label>
+        <select id="toneSelect" onchange="generateFeedback()">
+          <option value="encouraging">Encouraging / Friendly</option>
+          <option value="formal" selected>Formal / Academic</option>
+          <option value="direct">Direct / Concise</option>
+        </select>
+      </div>
+      <div>
+        <label for="formatSelect">Output Format</label>
+        <select id="formatSelect" onchange="generateFeedback()">
+          <option value="bullets" selected>Bullet Points</option>
+          <option value="paragraph">Paragraph Format</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- EDITABLE OUTPUT CONTAINER -->
+    <div class="output-container">
+      <button class="btn btn-secondary copy-btn-overlay" onclick="copyOutput(this)">Copy</button>
+      <textarea id="output" class="output-textarea" placeholder="Your generated feedback will appear here..."></textarea>
+    </div>
+
+    <div class="output-actions">
+      <button class="btn btn-success" onclick="logAndNextStudent(this)">Log Grade & Next Student</button>
+      <button class="btn btn-primary" onclick="copyOutput(this)">📋 Copy Comment to Clipboard</button>
+    </div>
   </div>
+
+  <!-- GRADE DISTRIBUTION TRACKER -->
+  <div class="card">
+    <h2>
+      <span>Class Session Grade Distribution Tracker</span>
+      <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 4px 8px;" onclick="resetTracker()">Reset Tracker</button>
+    </h2>
+    <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 8px;">
+      Tracks overall grades given in this session across all marked students.
+    </p>
+    <div class="tracker-grid">
+      <div class="tracker-stat">
+        <div id="countA" class="tracker-stat-count">0</div>
+        <div class="tracker-stat-label">Grade A</div>
+      </div>
+      <div class="tracker-stat">
+        <div id="countB" class="tracker-stat-count">0</div>
+        <div class="tracker-stat-label">Grade B</div>
+      </div>
+      <div class="tracker-stat">
+        <div id="countC" class="tracker-stat-count">0</div>
+        <div class="tracker-stat-label">Grade C</div>
+      </div>
+      <div class="tracker-stat">
+        <div id="countD" class="tracker-stat-count">0</div>
+        <div class="tracker-stat-label">Grade D</div>
+      </div>
+      <div class="tracker-stat">
+        <div id="countE" class="tracker-stat-count">0</div>
+        <div class="tracker-stat-label">Grade E</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
   const STORAGE_KEY = "feedback_generator_rubric";
   const PRESETS_KEY = "feedback_generator_presets";
   const API_KEY_STORAGE = "feedback_generator_gemini_api_key";
+  const TRACKER_KEY = "feedback_generator_tracker";
 
   const defaultCriteria = [
     {
@@ -212,6 +290,7 @@
   let selectedGrades = {};
   let manualOverride = "AUTO";
   let attachedTaskSheet = null;
+  let gradeCounts = JSON.parse(localStorage.getItem(TRACKER_KEY)) || { A: 0, B: 0, C: 0, D: 0, E: 0 };
 
   const gradePoints = { 'A': 100, 'B': 77, 'C': 60, 'D': 45, 'E': 20 };
 
@@ -271,7 +350,6 @@
     document.getElementById('extractRubricBar').style.display = 'none';
   }
 
-  // --- AUTOMATIC WHOLE-RUBRIC EXTRACTION FROM TASK SHEET ---
   async function extractCriteriaFromTaskSheet() {
     const apiKey = document.getElementById('apiKeyInput').value.trim();
 
@@ -293,25 +371,16 @@
 Analyze the provided task sheet document (which contains assignment requirements, objectives, and/or rubric criteria).
 
 YOUR TASK:
-1. Identify each key grading criterion or core assessment domain (e.g. Analysis, Research, Structure, Communication).
-2. For each criterion identified, assign a short code (e.g. CR1, CR2), a descriptive name, and a concise summary of the core skill/requirement.
+1. Identify each key grading criterion or core assessment domain.
+2. For each criterion identified, assign a short code, a descriptive name, and a concise summary of the core skill/requirement.
 3. Write 6 distinct, clear, single-sentence rubric feedback comments assessing that specific criterion within the context of THIS specific task.
 
 STRICT GUIDELINES:
 1. Australian English spelling MUST be used exclusively (e.g., organised, analysed, emphasised, generalised, standardise, colour).
 2. Maintain a professional, grounded, teacher-like tone. Avoid excessive or hyperbolic adjectives.
 3. Keep punctuation standard and clean (no exclamation marks).
-4. Integrate specific terminology and context from the task sheet into the comments.
 
-Categories for each criterion:
-- A: High achievement / Proficient execution
-- B_strength: Solid work / Good competence (framed positively)
-- B_improvement: Actionable advice on what is required to elevate this criterion to an A grade
-- C: Satisfactory / Basic execution with minor gaps
-- D: Partial achievement / Needs substantial development
-- E: Limited achievement / Inadequate execution
-
-Return ONLY a valid JSON array of objects following this exact schema:
+Return ONLY a valid JSON array matching the schema:
 [
   {
     "code": "CR1",
@@ -337,7 +406,7 @@ Return ONLY a valid JSON array of objects following this exact schema:
     requestParts.push({ text: prompt });
 
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -374,8 +443,6 @@ Return ONLY a valid JSON array of objects following this exact schema:
         resetGrades();
         renderCriteria();
         alert(`Successfully generated ${criteria.length} criteria based on your task sheet!`);
-      } else {
-        alert("Could not automatically extract criteria from the document. Try using single criteria generation instead.");
       }
     } catch (err) {
       alert("API Error: " + err.message);
@@ -391,12 +458,12 @@ Return ONLY a valid JSON array of objects following this exact schema:
     const apiKey = document.getElementById('apiKeyInput').value.trim();
 
     if (!coreText) {
-      alert("Please enter a Core Topic/Skill first (e.g., 'synthesising research findings').");
+      alert("Please enter a Core Topic/Skill first.");
       return;
     }
 
     if (!apiKey) {
-      alert("Please enter your Gemini API Key in the Purple setup box at the top of Step 1.");
+      alert("Please enter your Gemini API Key in Step 1.");
       return;
     }
 
@@ -406,43 +473,17 @@ Return ONLY a valid JSON array of objects following this exact schema:
       btn.textContent = "Generating with AI...";
     }
 
-    let instructionPrompt = `You are a professional teacher writing constructive, balanced academic feedback.
-Write 6 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}".`;
-
-    if (attachedTaskSheet) {
-      instructionPrompt += `\n\nCONTEXT NOTE: A task sheet document has been provided. Incorporate specific context, vocabulary, and objectives from the task sheet where applicable into the comments.`;
-    }
-
-    instructionPrompt += `\n\nSTRICT GUIDELINES:
-1. Use Australian English spelling exclusively (e.g., organised, analysed, emphasised, generalised, standardise, colour).
-2. Maintain a professional, grounded teacher-like tone. Avoid dramatic or excessive adjectives.
-3. Keep punctuation simple and standard. Avoid exclamation marks.
-
-Write one clear sentence for each of these categories:
-- A (High achievement/Proficient execution)
-- B_strength (Solid work/Good competence - framed as a positive achievement)
-- B_improvement (Good attempt, but actionable advice on what is needed to reach an A grade)
-- C (Satisfactory/Basic execution with minor gaps)
-- D (Partial achievement/Needs substantial development)
-- E (Limited achievement/Inadequate execution)
-
-Return ONLY a valid JSON object matching this exact schema:
-{"A": "...", "B_strength": "...", "B_improvement": "...", "C": "...", "D": "...", "E": "..."}`;
+    let instructionPrompt = `Write 6 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}". Use Australian English spelling exclusively. Return ONLY JSON matching schema: {"A": "...", "B_strength": "...", "B_improvement": "...", "C": "...", "D": "...", "E": "..."}`;
 
     const requestParts = [];
-
     if (attachedTaskSheet) {
-      if (attachedTaskSheet.type === "multimodal") {
-        requestParts.push({ inline_data: attachedTaskSheet.inlineData });
-      } else if (attachedTaskSheet.type === "text") {
-        requestParts.push({ text: `--- ATTACHED TASK SHEET CONTENT ---\n${attachedTaskSheet.text}\n--- END TASK SHEET CONTENT ---` });
-      }
+      if (attachedTaskSheet.type === "multimodal") requestParts.push({ inline_data: attachedTaskSheet.inlineData });
+      else if (attachedTaskSheet.type === "text") requestParts.push({ text: `Task sheet context:\n${attachedTaskSheet.text}` });
     }
-
     requestParts.push({ text: instructionPrompt });
 
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -501,7 +542,7 @@ Return ONLY a valid JSON object matching this exact schema:
         </div>
         
         <div class="template-generator-bar">
-          <input type="text" value="${item.core || ''}" placeholder="Core Topic/Skill (e.g. structuring logical arguments)" onkeyup="updateCriterion(${index}, 'core', this.value)">
+          <input type="text" value="${item.core || ''}" placeholder="Core Topic/Skill" onkeyup="updateCriterion(${index}, 'core', this.value)">
           <button class="btn btn-ai" id="ai_btn_${index}" onclick="generateBandsFromCore(${index})">Magic Fill with AI</button>
         </div>
 
@@ -520,7 +561,7 @@ Return ONLY a valid JSON object matching this exact schema:
               </select>
             </div>
             <textarea id="comment_${index}_B_strength" style="margin-bottom:6px;" placeholder="B Strength sentence..." onkeyup="updateComment(${index}, 'B_strength', this.value)">${item.comments.B_strength || ''}</textarea>
-            <textarea id="comment_${index}_B_improvement" placeholder="B Improvement/Advice sentence..." onkeyup="updateComment(${index}, 'B_improvement', this.value)">${item.comments.B_improvement || ''}</textarea>
+            <textarea id="comment_${index}_B_improvement" placeholder="B Improvement sentence..." onkeyup="updateComment(${index}, 'B_improvement', this.value)">${item.comments.B_improvement || ''}</textarea>
           </div>
 
           <div>
@@ -569,7 +610,7 @@ Return ONLY a valid JSON object matching this exact schema:
   }
 
   function saveCurrentAsPreset() {
-    const name = prompt("Enter a name for this rubric preset (e.g. Essay 1):");
+    const name = prompt("Enter a name for this rubric preset:");
     if (!name) return;
     const presets = getPresets();
     presets[name] = criteria;
@@ -797,12 +838,15 @@ Return ONLY a valid JSON object matching this exact schema:
     }
   });
 
-  // --- FEEDBACK ROUTING LOGIC ---
+  // TONE AND FORMAT PARSER & FEEDBACK GENERATOR
   function generateFeedback() {
     const outputEl = document.getElementById('output');
     const displayEl = document.getElementById('overallDisplay');
     const detailEl = document.getElementById('overallDetail');
     
+    const tone = document.getElementById('toneSelect').value;
+    const format = document.getElementById('formatSelect').value;
+
     const strengths = [];
     const improvements = [];
 
@@ -810,20 +854,20 @@ Return ONLY a valid JSON object matching this exact schema:
       const grade = selectedGrades[criterion.code];
       if (!grade) return;
 
+      let comment = "";
       if (grade === 'A') {
-        if (criterion.comments.A) strengths.push(criterion.comments.A.trim());
+        comment = criterion.comments.A;
+        if (comment) strengths.push(comment.trim());
       } else if (grade === 'B') {
         const isImprovement = criterion.bMode === 'improvement';
-        const comment = isImprovement ? criterion.comments.B_improvement : criterion.comments.B_strength;
+        comment = isImprovement ? criterion.comments.B_improvement : criterion.comments.B_strength;
         if (comment) {
-          if (isImprovement) {
-            improvements.push(comment.trim());
-          } else {
-            strengths.push(comment.trim());
-          }
+          if (isImprovement) improvements.push(comment.trim());
+          else strengths.push(comment.trim());
         }
       } else {
-        if (criterion.comments[grade]) improvements.push(criterion.comments[grade].trim());
+        comment = criterion.comments[grade];
+        if (comment) improvements.push(comment.trim());
       }
     });
 
@@ -837,24 +881,90 @@ Return ONLY a valid JSON object matching this exact schema:
       detailEl.textContent = 'Select grades above';
     }
 
-    outputEl.textContent = `What went well:
-${strengths.length > 0 ? strengths.map(s => `- ${s}`).join('\n') : '-'}
+    let resultText = "";
 
-What could be improved:
-${improvements.length > 0 ? improvements.map(i => `- ${i}`).join('\n') : '-'}
+    // FORMATTING BY TONE AND STYLE
+    if (format === 'bullets') {
+      let strengthHeading = "What went well:";
+      let improvementHeading = "What could be improved:";
 
-Overall: ${stats.letter ? stats.letter : '-'}`;
+      if (tone === 'encouraging') {
+        strengthHeading = "Great Strengths & Accomplishments:";
+        improvementHeading = "Key Opportunities for Growth:";
+      } else if (tone === 'direct') {
+        strengthHeading = "Strengths:";
+        improvementHeading = "Areas for Action:";
+      }
+
+      resultText = `${strengthHeading}\n${strengths.length > 0 ? strengths.map(s => `- ${s}`).join('\n') : '- None selected'}\n\n${improvementHeading}\n${improvements.length > 0 ? improvements.map(i => `- ${i}`).join('\n') : '- None selected'}\n\nOverall Grade: ${stats.letter ? stats.letter : '-'}`;
+    } else {
+      // PARAGRAPH FORMAT
+      let intro = "Overall Summary: ";
+      if (tone === 'encouraging') intro = "Thank you for your work on this task! ";
+      if (tone === 'direct') intro = "";
+
+      let strengthText = strengths.length > 0 ? strengths.join(" ") : "No key strengths highlighted.";
+      let improvementText = improvements.length > 0 ? improvements.join(" ") : "No specific areas for improvement identified.";
+
+      resultText = `${intro}${strengthText} ${improvementText} (Overall Grade: ${stats.letter ? stats.letter : '-'})`;
+    }
+
+    outputEl.value = resultText;
   }
 
-  function copyOutput() {
-    navigator.clipboard.writeText(document.getElementById('output').textContent).then(() => {
-      alert('Feedback copied to clipboard!');
+  // COPY FUNCTION FOR ALL BUTTONS
+  function copyOutput(clickedBtn) {
+    const text = document.getElementById('output').value;
+    navigator.clipboard.writeText(text).then(() => {
+      const originalText = clickedBtn.textContent;
+      clickedBtn.textContent = '✓ Copied!';
+      clickedBtn.classList.add('btn-success');
+      
+      setTimeout(() => {
+        clickedBtn.textContent = originalText;
+        clickedBtn.classList.remove('btn-success');
+      }, 1500);
     });
+  }
+
+  // LOG GRADE & NEXT STUDENT
+  function logAndNextStudent(btn) {
+    const stats = calculateOverallGrade();
+    if (!stats.letter) {
+      alert("Please select student grades first before logging.");
+      return;
+    }
+
+    // Copy current feedback to clipboard
+    copyOutput(btn);
+
+    // Track grade distribution count
+    gradeCounts[stats.letter] = (gradeCounts[stats.letter] || 0) + 1;
+    localStorage.setItem(TRACKER_KEY, JSON.stringify(gradeCounts));
+    updateTrackerUI();
+
+    // Reset current student grade selections
+    resetGrades();
+  }
+
+  function updateTrackerUI() {
+    ['A', 'B', 'C', 'D', 'E'].forEach(letter => {
+      document.getElementById(`count${letter}`).textContent = gradeCounts[letter] || 0;
+    });
+  }
+
+  function resetTracker() {
+    if (confirm("Are you sure you want to reset the session grade tracker counts?")) {
+      gradeCounts = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+      localStorage.setItem(TRACKER_KEY, JSON.stringify(gradeCounts));
+      updateTrackerUI();
+    }
   }
 
   loadApiKey();
   updatePresetDropdown();
   renderCriteria();
+  updateTrackerUI();
 </script>
 
 </body>
