@@ -26,7 +26,7 @@
     p.subtitle { color: var(--muted); margin-bottom: 24px; }
     
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .card h2 { font-size: 1.25rem; margin-bottom: 12px; display: flex; justify-content: space-between; align-align: center; flex-wrap: wrap; gap: 8px; }
+    .card h2 { font-size: 1.25rem; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 
     .header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
@@ -55,7 +55,9 @@
     .api-row { display: flex; gap: 10px; align-items: center; }
     .api-panel label { color: #581c87; margin-bottom: 0; white-space: nowrap; }
 
-    .task-upload-box { background: white; border: 1px dashed #c084fc; border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; color: #581c87; }
+    .task-upload-box { background: white; border: 1px dashed #c084fc; border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; color: #581c87; }
+    .task-upload-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .task-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
     .bulk-panel { background: #f8fafc; border: 1px solid var(--border); padding: 12px; border-radius: 6px; margin-bottom: 16px; display: none; }
     .bulk-panel textarea { height: 90px; font-family: monospace; font-size: 0.85rem; }
@@ -114,14 +116,22 @@
       </div>
       
       <div class="task-upload-box">
-        <div>
-          <strong>Task Sheet Attachment (Optional): </strong>
-          <span id="taskFileName" style="font-weight: normal; font-style: italic;">No task sheet attached. Upload a PDF/document to generate highly specific task context.</span>
+        <div class="task-upload-header">
+          <div>
+            <strong>Task Sheet Attachment (Optional): </strong>
+            <span id="taskFileName" style="font-weight: normal; font-style: italic;">No task sheet attached. Upload a PDF or document to generate custom criteria & comments.</span>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 4px 10px;" onclick="document.getElementById('taskFileInput').click()">Upload Task Sheet</button>
+            <button class="btn btn-danger" id="clearTaskBtn" style="font-size: 0.8rem; padding: 4px 10px; display:none;" onclick="clearTaskSheet()">Clear Task</button>
+            <input type="file" id="taskFileInput" accept=".pdf,.txt,.md,.png,.jpg,.jpeg" style="display: none;" onchange="handleTaskFileUpload(event)">
+          </div>
         </div>
-        <div>
-          <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 4px 10px;" onclick="document.getElementById('taskFileInput').click()">Upload Task Sheet</button>
-          <button class="btn btn-danger" id="clearTaskBtn" style="font-size: 0.8rem; padding: 4px 10px; display:none;" onclick="clearTaskSheet()">Clear Task</button>
-          <input type="file" id="taskFileInput" accept=".pdf,.txt,.md,.png,.jpg,.jpeg" style="display: none;" onchange="handleTaskFileUpload(event)">
+
+        <div id="extractRubricBar" style="display: none; border-top: 1px dashed #d8b4fe; padding-top: 6px; text-align: right;">
+          <button class="btn btn-ai" id="extractRubricBtn" style="font-size: 0.85rem;" onclick="extractCriteriaFromTaskSheet()">
+            ✨ Extract Entire Rubric & Generate Comments from Task Sheet
+          </button>
         </div>
       </div>
     </div>
@@ -201,7 +211,7 @@
   let criteria = loadCriteriaFromStorage();
   let selectedGrades = {};
   let manualOverride = "AUTO";
-  let attachedTaskSheet = null; // Holds { inlineData: { mime_type, data }, fileName } or { text, fileName }
+  let attachedTaskSheet = null;
 
   const gradePoints = { 'A': 100, 'B': 77, 'C': 60, 'D': 45, 'E': 20 };
 
@@ -214,7 +224,6 @@
     localStorage.setItem(API_KEY_STORAGE, val.trim());
   }
 
-  // --- TASK SHEET UPLOAD HANDLER ---
   function handleTaskFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -250,14 +259,131 @@
     document.getElementById('taskFileName').textContent = `Attached: ${fileName}`;
     document.getElementById('taskFileName').style.fontWeight = 'bold';
     document.getElementById('clearTaskBtn').style.display = 'inline-block';
+    document.getElementById('extractRubricBar').style.display = 'block';
   }
 
   function clearTaskSheet() {
     attachedTaskSheet = null;
     document.getElementById('taskFileInput').value = '';
-    document.getElementById('taskFileName').textContent = 'No task sheet attached. Upload a PDF/document to generate highly specific task context.';
+    document.getElementById('taskFileName').textContent = 'No task sheet attached. Upload a PDF or document to generate custom criteria & comments.';
     document.getElementById('taskFileName').style.fontWeight = 'normal';
     document.getElementById('clearTaskBtn').style.display = 'none';
+    document.getElementById('extractRubricBar').style.display = 'none';
+  }
+
+  // --- AUTOMATIC WHOLE-RUBRIC EXTRACTION FROM TASK SHEET ---
+  async function extractCriteriaFromTaskSheet() {
+    const apiKey = document.getElementById('apiKeyInput').value.trim();
+
+    if (!attachedTaskSheet) {
+      alert("Please upload a task sheet first.");
+      return;
+    }
+
+    if (!apiKey) {
+      alert("Please enter your Gemini API Key in the Purple setup box at the top of Step 1.");
+      return;
+    }
+
+    const btn = document.getElementById('extractRubricBtn');
+    btn.disabled = true;
+    btn.textContent = "Analyzing task sheet and generating full rubric...";
+
+    const prompt = `You are an expert curriculum supervisor and teacher. 
+Analyze the provided task sheet document (which contains assignment requirements, objectives, and/or rubric criteria).
+
+YOUR TASK:
+1. Identify each key grading criterion or core assessment domain (e.g. Analysis, Research, Structure, Communication).
+2. For each criterion identified, assign a short code (e.g. CR1, CR2), a descriptive name, and a concise summary of the core skill/requirement.
+3. Write 6 distinct, clear, single-sentence rubric feedback comments assessing that specific criterion within the context of THIS specific task.
+
+STRICT GUIDELINES:
+1. Australian English spelling MUST be used exclusively (e.g., organised, analysed, emphasised, generalised, standardise, colour).
+2. Maintain a professional, grounded, teacher-like tone. Avoid excessive or hyperbolic adjectives.
+3. Keep punctuation standard and clean (no exclamation marks).
+4. Integrate specific terminology and context from the task sheet into the comments.
+
+Categories for each criterion:
+- A: High achievement / Proficient execution
+- B_strength: Solid work / Good competence (framed positively)
+- B_improvement: Actionable advice on what is required to elevate this criterion to an A grade
+- C: Satisfactory / Basic execution with minor gaps
+- D: Partial achievement / Needs substantial development
+- E: Limited achievement / Inadequate execution
+
+Return ONLY a valid JSON array of objects following this exact schema:
+[
+  {
+    "code": "CR1",
+    "name": "Criterion Name",
+    "core": "Core skill summary",
+    "comments": {
+      "A": "...",
+      "B_strength": "...",
+      "B_improvement": "...",
+      "C": "...",
+      "D": "...",
+      "E": "..."
+    }
+  }
+]`;
+
+    const requestParts = [];
+    if (attachedTaskSheet.type === "multimodal") {
+      requestParts.push({ inline_data: attachedTaskSheet.inlineData });
+    } else if (attachedTaskSheet.type === "text") {
+      requestParts.push({ text: `--- ATTACHED TASK SHEET CONTENT ---\n${attachedTaskSheet.text}\n--- END TASK SHEET CONTENT ---` });
+    }
+    requestParts.push({ text: prompt });
+
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: requestParts }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const extractedCriteria = JSON.parse(data.candidates[0].content.parts[0].text);
+
+      if (Array.isArray(extractedCriteria) && extractedCriteria.length > 0) {
+        criteria = extractedCriteria.map(item => ({
+          code: item.code || "CR",
+          name: item.name || "Criterion",
+          core: item.core || "",
+          bMode: "strength",
+          comments: {
+            A: item.comments?.A || "",
+            B_strength: item.comments?.B_strength || "",
+            B_improvement: item.comments?.B_improvement || "",
+            C: item.comments?.C || "",
+            D: item.comments?.D || "",
+            E: item.comments?.E || ""
+          }
+        }));
+
+        saveCriteriaToStorage();
+        resetGrades();
+        renderCriteria();
+        alert(`Successfully generated ${criteria.length} criteria based on your task sheet!`);
+      } else {
+        alert("Could not automatically extract criteria from the document. Try using single criteria generation instead.");
+      }
+    } catch (err) {
+      alert("API Error: " + err.message);
+      console.error(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "✨ Extract Entire Rubric & Generate Comments from Task Sheet";
+    }
   }
 
   async function generateBandsFromCore(index) {
@@ -284,7 +410,7 @@
 Write 6 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}".`;
 
     if (attachedTaskSheet) {
-      instructionPrompt += `\n\nCONTEXT NOTE: A task sheet document has been provided. Incorporate specific context, vocabulary, and objectives from the task sheet where applicable into the comments so they feel custom-tailored to this exact assignment.`;
+      instructionPrompt += `\n\nCONTEXT NOTE: A task sheet document has been provided. Incorporate specific context, vocabulary, and objectives from the task sheet where applicable into the comments.`;
     }
 
     instructionPrompt += `\n\nSTRICT GUIDELINES:
@@ -303,7 +429,6 @@ Write one clear sentence for each of these categories:
 Return ONLY a valid JSON object matching this exact schema:
 {"A": "...", "B_strength": "...", "B_improvement": "...", "C": "...", "D": "...", "E": "..."}`;
 
-    // Construct API Payload Parts
     const requestParts = [];
 
     if (attachedTaskSheet) {
