@@ -26,7 +26,7 @@
     p.subtitle { color: var(--muted); margin-bottom: 24px; }
     
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .card h2 { font-size: 1.25rem; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .card h2 { font-size: 1.25rem; margin-bottom: 12px; display: flex; justify-content: space-between; align-align: center; flex-wrap: wrap; gap: 8px; }
 
     .header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
@@ -51,8 +51,11 @@
     .dropzone { border: 2px dashed var(--primary); background: #eff6ff; padding: 15px; border-radius: 8px; text-align: center; color: var(--primary); margin-bottom: 15px; font-weight: 500; display: none; }
     .dropzone.active { display: block; }
 
-    .api-panel { background: #f3e8ff; border: 1px solid #d8b4fe; padding: 12px; border-radius: 6px; margin-bottom: 16px; display: flex; gap: 10px; align-items: center; }
+    .api-panel { background: #f3e8ff; border: 1px solid #d8b4fe; padding: 12px; border-radius: 6px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .api-row { display: flex; gap: 10px; align-items: center; }
     .api-panel label { color: #581c87; margin-bottom: 0; white-space: nowrap; }
+
+    .task-upload-box { background: white; border: 1px dashed #c084fc; border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; color: #581c87; }
 
     .bulk-panel { background: #f8fafc; border: 1px solid var(--border); padding: 12px; border-radius: 6px; margin-bottom: 16px; display: none; }
     .bulk-panel textarea { height: 90px; font-family: monospace; font-size: 0.85rem; }
@@ -103,10 +106,24 @@
       </div>
     </h2>
 
-    <!-- AI API KEY BAR -->
+    <!-- AI API KEY & TASK SHEET UPLOAD PANEL -->
     <div class="api-panel">
-      <label for="apiKeyInput">Gemini API Key:</label>
-      <input type="password" id="apiKeyInput" placeholder="Paste your Google Gemini API Key here to enable AI Auto-Fill" onchange="saveApiKey(this.value)">
+      <div class="api-row">
+        <label for="apiKeyInput">Gemini API Key:</label>
+        <input type="password" id="apiKeyInput" placeholder="Paste your Google Gemini API Key here to enable AI Auto-Fill" onchange="saveApiKey(this.value)">
+      </div>
+      
+      <div class="task-upload-box">
+        <div>
+          <strong>Task Sheet Attachment (Optional): </strong>
+          <span id="taskFileName" style="font-weight: normal; font-style: italic;">No task sheet attached. Upload a PDF/document to generate highly specific task context.</span>
+        </div>
+        <div>
+          <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 4px 10px;" onclick="document.getElementById('taskFileInput').click()">Upload Task Sheet</button>
+          <button class="btn btn-danger" id="clearTaskBtn" style="font-size: 0.8rem; padding: 4px 10px; display:none;" onclick="clearTaskSheet()">Clear Task</button>
+          <input type="file" id="taskFileInput" accept=".pdf,.txt,.md,.png,.jpg,.jpeg" style="display: none;" onchange="handleTaskFileUpload(event)">
+        </div>
+      </div>
     </div>
 
     <!-- BULK PASTE PANEL -->
@@ -184,6 +201,7 @@
   let criteria = loadCriteriaFromStorage();
   let selectedGrades = {};
   let manualOverride = "AUTO";
+  let attachedTaskSheet = null; // Holds { inlineData: { mime_type, data }, fileName } or { text, fileName }
 
   const gradePoints = { 'A': 100, 'B': 77, 'C': 60, 'D': 45, 'E': 20 };
 
@@ -194,6 +212,52 @@
 
   function saveApiKey(val) {
     localStorage.setItem(API_KEY_STORAGE, val.trim());
+  }
+
+  // --- TASK SHEET UPLOAD HANDLER ---
+  function handleTaskFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const fileName = file.name;
+    const reader = new FileReader();
+
+    if (file.type === "application/pdf" || file.type.startsWith("image/")) {
+      reader.onload = function(e) {
+        const base64Data = e.target.result.split(',')[1];
+        attachedTaskSheet = {
+          type: "multimodal",
+          fileName: fileName,
+          inlineData: { mime_type: file.type, data: base64Data }
+        };
+        updateTaskSheetUI(fileName);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = function(e) {
+        attachedTaskSheet = {
+          type: "text",
+          fileName: fileName,
+          text: e.target.result
+        };
+        updateTaskSheetUI(fileName);
+      };
+      reader.readAsText(file);
+    }
+  }
+
+  function updateTaskSheetUI(fileName) {
+    document.getElementById('taskFileName').textContent = `Attached: ${fileName}`;
+    document.getElementById('taskFileName').style.fontWeight = 'bold';
+    document.getElementById('clearTaskBtn').style.display = 'inline-block';
+  }
+
+  function clearTaskSheet() {
+    attachedTaskSheet = null;
+    document.getElementById('taskFileInput').value = '';
+    document.getElementById('taskFileName').textContent = 'No task sheet attached. Upload a PDF/document to generate highly specific task context.';
+    document.getElementById('taskFileName').style.fontWeight = 'normal';
+    document.getElementById('clearTaskBtn').style.display = 'none';
   }
 
   async function generateBandsFromCore(index) {
@@ -216,10 +280,14 @@
       btn.textContent = "Generating with AI...";
     }
 
-    const prompt = `You are a professional teacher writing constructive, balanced academic feedback.
-Write 6 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}".
+    let instructionPrompt = `You are a professional teacher writing constructive, balanced academic feedback.
+Write 6 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}".`;
 
-STRICT GUIDELINES:
+    if (attachedTaskSheet) {
+      instructionPrompt += `\n\nCONTEXT NOTE: A task sheet document has been provided. Incorporate specific context, vocabulary, and objectives from the task sheet where applicable into the comments so they feel custom-tailored to this exact assignment.`;
+    }
+
+    instructionPrompt += `\n\nSTRICT GUIDELINES:
 1. Use Australian English spelling exclusively (e.g., organised, analysed, emphasised, generalised, standardise, colour).
 2. Maintain a professional, grounded teacher-like tone. Avoid dramatic or excessive adjectives.
 3. Keep punctuation simple and standard. Avoid exclamation marks.
@@ -235,12 +303,25 @@ Write one clear sentence for each of these categories:
 Return ONLY a valid JSON object matching this exact schema:
 {"A": "...", "B_strength": "...", "B_improvement": "...", "C": "...", "D": "...", "E": "..."}`;
 
+    // Construct API Payload Parts
+    const requestParts = [];
+
+    if (attachedTaskSheet) {
+      if (attachedTaskSheet.type === "multimodal") {
+        requestParts.push({ inline_data: attachedTaskSheet.inlineData });
+      } else if (attachedTaskSheet.type === "text") {
+        requestParts.push({ text: `--- ATTACHED TASK SHEET CONTENT ---\n${attachedTaskSheet.text}\n--- END TASK SHEET CONTENT ---` });
+      }
+    }
+
+    requestParts.push({ text: instructionPrompt });
+
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
+          contents: [{ parts: requestParts }],
           generationConfig: { responseMimeType: "application/json" }
         })
       });
