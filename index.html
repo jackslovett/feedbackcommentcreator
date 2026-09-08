@@ -83,7 +83,7 @@
     .customization-bar > div { flex: 1; min-width: 180px; }
 
     .output-container { position: relative; margin-top: 10px; }
-    .output-textarea { width: 100%; min-height: 140px; padding: 14px; font-family: monospace; font-size: 0.95rem; line-height: 1.4; border: 1px solid var(--border); border-radius: 6px; background-color: var(--accent-bg); }
+    .output-textarea { width: 100%; min-height: 160px; padding: 14px; font-family: monospace; font-size: 0.95rem; line-height: 1.4; border: 1px solid var(--border); border-radius: 6px; background-color: var(--accent-bg); }
     .output-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
     .copy-btn-overlay { position: absolute; top: 10px; right: 10px; font-size: 0.8rem; padding: 4px 10px; z-index: 5; }
 
@@ -92,9 +92,6 @@
     .tracker-stat { background: #fafafa; border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
     .tracker-stat-count { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
     .tracker-stat-label { font-size: 0.8rem; color: var(--muted); }
-
-    .b-toggle-box { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .b-toggle-box select { padding: 2px 6px; font-size: 0.8rem; width: auto; }
   </style>
 </head>
 <body>
@@ -281,8 +278,7 @@
         C: "Provides a basic analysis of key arguments, though some claims require clearer evidence.",
         D: "Shows limited capability in analysing arguments, with inconsistent use of supporting evidence.",
         E: "Fails to demonstrate adequate skills in analysing key arguments or providing evidence."
-      },
-      bMode: "strength"
+      }
     }
   ];
 
@@ -373,7 +369,13 @@ Analyze the provided task sheet document (which contains assignment requirements
 YOUR TASK:
 1. Identify each key grading criterion or core assessment domain.
 2. For each criterion identified, assign a short code, a descriptive name, and a concise summary of the core skill/requirement.
-3. Write 6 distinct, clear, single-sentence rubric feedback comments assessing that specific criterion within the context of THIS specific task.
+3. Write 6 distinct, clear, single-sentence rubric feedback comments assessing that specific criterion within the context of THIS specific task:
+   - A: High proficiency / Strength
+   - B_strength: Solid demonstration of skill / Strength
+   - B_improvement: Clear, actionable step to bridge from B to A / Improvement
+   - C: Basic / Improvement required
+   - D: Limited / Significant improvement required
+   - E: Unsatisfactory / Critical improvement required
 
 STRICT GUIDELINES:
 1. Australian English spelling MUST be used exclusively (e.g., organised, analysed, emphasised, generalised, standardise, colour).
@@ -428,7 +430,6 @@ Return ONLY a valid JSON array matching the schema:
           code: item.code || "CR",
           name: item.name || "Criterion",
           core: item.core || "",
-          bMode: "strength",
           comments: {
             A: item.comments?.A || "",
             B_strength: item.comments?.B_strength || "",
@@ -473,7 +474,7 @@ Return ONLY a valid JSON array matching the schema:
       btn.textContent = "Generating with AI...";
     }
 
-    let instructionPrompt = `Write 6 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}". Use Australian English spelling exclusively. Return ONLY JSON matching schema: {"A": "...", "B_strength": "...", "B_improvement": "...", "C": "...", "D": "...", "E": "..."}`;
+    let instructionPrompt = `Write 6 distinct, clear, single-sentence rubric feedback comments assessing: "${coreText}". Australian English spelling exclusively. Include both B_strength (what they did well) and B_improvement (what needs improvement for top band). Return ONLY JSON matching schema: {"A": "...", "B_strength": "...", "B_improvement": "...", "C": "...", "D": "...", "E": "..."}`;
 
     const requestParts = [];
     if (attachedTaskSheet) {
@@ -530,7 +531,6 @@ Return ONLY a valid JSON array matching the schema:
         item.comments.B_strength = item.comments.B;
         item.comments.B_improvement = "";
       }
-      if (!item.bMode) item.bMode = "strength";
 
       const div = document.createElement('div');
       div.className = 'criterion-item';
@@ -553,13 +553,7 @@ Return ONLY a valid JSON array matching the schema:
           </div>
 
           <div>
-            <div class="b-toggle-box">
-              <label style="margin-bottom:0;">Grade B Comment</label>
-              <select onchange="updateBMode(${index}, this.value)">
-                <option value="strength" ${item.bMode === 'strength' ? 'selected' : ''}>Active: Strength</option>
-                <option value="improvement" ${item.bMode === 'improvement' ? 'selected' : ''}>Active: Improvement</option>
-              </select>
-            </div>
+            <label>Grade B Comments (Both Included)</label>
             <textarea id="comment_${index}_B_strength" style="margin-bottom:6px;" placeholder="B Strength sentence..." onkeyup="updateComment(${index}, 'B_strength', this.value)">${item.comments.B_strength || ''}</textarea>
             <textarea id="comment_${index}_B_improvement" placeholder="B Improvement sentence..." onkeyup="updateComment(${index}, 'B_improvement', this.value)">${item.comments.B_improvement || ''}</textarea>
           </div>
@@ -584,12 +578,6 @@ Return ONLY a valid JSON array matching the schema:
     });
 
     renderGradeSelectors();
-  }
-
-  function updateBMode(index, mode) {
-    criteria[index].bMode = mode;
-    saveCriteriaToStorage();
-    generateFeedback();
   }
 
   function getPresets() {
@@ -650,7 +638,6 @@ Return ONLY a valid JSON array matching the schema:
           code: parts[0] || "CODE",
           name: parts[1] || "Criterion Name",
           core: "",
-          bMode: "strength",
           comments: {
             A: parts[2] || "",
             B_strength: parts[3] || "",
@@ -707,7 +694,7 @@ Return ONLY a valid JSON array matching the schema:
         <select onchange="selectGrade('${item.code}', this.value)">
           <option value="">-- Select Grade --</option>
           <option value="A" ${currentGrade === 'A' ? 'selected' : ''}>A (Strength)</option>
-          <option value="B" ${currentGrade === 'B' ? 'selected' : ''}>B (${item.bMode === 'improvement' ? 'Improvement' : 'Strength'})</option>
+          <option value="B" ${currentGrade === 'B' ? 'selected' : ''}>B (Strength + Improvement)</option>
           <option value="C" ${currentGrade === 'C' ? 'selected' : ''}>C (Improvement)</option>
           <option value="D" ${currentGrade === 'D' ? 'selected' : ''}>D (Improvement)</option>
           <option value="E" ${currentGrade === 'E' ? 'selected' : ''}>E (Improvement)</option>
@@ -759,7 +746,6 @@ Return ONLY a valid JSON array matching the schema:
       code: newCode,
       name: `Criterion ${criteria.length + 1}`,
       core: "",
-      bMode: "strength",
       comments: { A: "", B_strength: "", B_improvement: "", C: "", D: "", E: "" }
     });
     saveCriteriaToStorage();
@@ -854,19 +840,14 @@ Return ONLY a valid JSON array matching the schema:
       const grade = selectedGrades[criterion.code];
       if (!grade) return;
 
-      let comment = "";
       if (grade === 'A') {
-        comment = criterion.comments.A;
-        if (comment) strengths.push(comment.trim());
+        if (criterion.comments.A) strengths.push(criterion.comments.A.trim());
       } else if (grade === 'B') {
-        const isImprovement = criterion.bMode === 'improvement';
-        comment = isImprovement ? criterion.comments.B_improvement : criterion.comments.B_strength;
-        if (comment) {
-          if (isImprovement) improvements.push(comment.trim());
-          else strengths.push(comment.trim());
-        }
+        // DUAL B GRADE HANDLING: INCLUDES BOTH STRENGTH AND IMPROVEMENT COMMENTS
+        if (criterion.comments.B_strength) strengths.push(criterion.comments.B_strength.trim());
+        if (criterion.comments.B_improvement) improvements.push(criterion.comments.B_improvement.trim());
       } else {
-        comment = criterion.comments[grade];
+        const comment = criterion.comments[grade];
         if (comment) improvements.push(comment.trim());
       }
     });
