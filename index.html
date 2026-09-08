@@ -877,7 +877,7 @@ Return ONLY a valid JSON array matching the schema:
         improvementHeading = "Areas for Action:";
       }
 
-      resultText = `${strengthHeading}\n${strengths.length > 0 ? strengths.map(s => `- ${s}`).join('\n') : '- None selected'}\n\n${improvementHeading}\n${improvements.length > 0 ? improvements.map(i => `- ${i}`).join('\n') : '- None selected'}\n\nOverall Grade: ${stats.letter ? stats.letter : '-'}`;
+      resultText = `${strengthHeading}\n${strengths.length > 0 ? strengths.map(s => `- ${s}`).join('\n') : '- None selected'}\n\n${improvementHeading}\n${improvements.length > 0 ? improvements.map(i => `- ${i}`).join('\n') : '- None selected'}\n\nOverall: ${stats.letter ? stats.letter : '-'}`;
     } else {
       // PARAGRAPH FORMAT
       let intro = "Overall Summary: ";
@@ -887,7 +887,7 @@ Return ONLY a valid JSON array matching the schema:
       let strengthText = strengths.length > 0 ? strengths.join(" ") : "No key strengths highlighted.";
       let improvementText = improvements.length > 0 ? improvements.join(" ") : "No specific areas for improvement identified.";
 
-      resultText = `${intro}${strengthText} ${improvementText} (Overall Grade: ${stats.letter ? stats.letter : '-'})`;
+      resultText = `${intro}${strengthText} ${improvementText} (Overall: ${stats.letter ? stats.letter : '-'})`;
     }
 
     outputEl.value = resultText;
